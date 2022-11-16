@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package abi;
+
+// command requests from the client
+message CommandRequest {
+  oneof request_data {
+    Hget hget = 1;
+    Hgetall hgetall = 2;
+    Hmget hmget = 3;
+    Hset hset = 4;
+    Hmset hmset = 5;
+    Hdel hdel = 6;
+    Hmdel hmdel = 7;
+    Hexist hexist = 8;
+    Hmexist hmexist = 9;
+  }
+}
+
+// command responses from the server
+message CommandResponse {
+  uint32 status = 1;
+  // if status != 2xx, message will have detail error message
+  string message = 2;
+  // values when status == 2xx
+  repeated Value values = 3;
+  // kv pairs when status == 2xx
+  repeated KvPair pairs = 4;
+}
+
+// query a key from a table, return the value
+message Hget {
+  string table = 1;
+  string key = 2;
+}
+
+// query all keys from a table, return all key-value pairs
+message Hgetall {
+  string table = 1;
+}
+
+// query multiple keys from a table, return all values
+message Hmget {
+  string table = 1;
+  repeated string keys = 2;
+}
+
+// set a key-value pair to a table, if table does not exist, create it
+message Hset {
+  string table = 1;
+  KvPair pair = 2;
+}
+
+// set multiple key-value pairs to a table, if table does not exist, create it
+message Hmset {
+  string table = 1;
+  repeated KvPair pairs = 2;
+}
+
+// delete a key from a table, return the previous value
+message Hdel {
+  string table = 1;
+  string key = 2;
+}
+
+// delete multiple keys from a table, return the previous values
+message Hmdel {
+  string table = 1;
+  repeated string keys = 2;
+}
+
+// check if a key exists in a table, return true if exists
+message Hexist {
+  string table = 1;
+  string key = 2;
+}
+
+// check if multiple keys exist in a table, return true if all exist
+message Hmexist {
+  string table = 1;
+  repeated string keys = 2;
+}
+
+// response value
+message Value {
+  oneof value {
+    string string = 1;
+    bytes binary = 2;
+    int64 integer = 3;
+    double float = 4;
+    bool bool = 5;
+  }
+}
+
+// key-value pair
+message KvPair {
+  string key = 1;
+  Value value = 2;
+}
