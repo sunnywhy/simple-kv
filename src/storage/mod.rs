@@ -2,6 +2,7 @@ use crate::error::KvError;
 use crate::{KvPair, Value};
 
 mod memory;
+pub use memory::MemTable;
 
 // we don't care where the data is saved, we need to define how the storage will be used
 pub trait Storage {
