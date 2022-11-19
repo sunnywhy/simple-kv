@@ -45,13 +45,13 @@ pub fn dispatch(request: CommandRequest, store: &impl Storage) -> CommandRespons
     match request.request_data {
         Some(RequestData::Hget(v)) => v.execute(store),
         Some(RequestData::Hgetall(v)) => v.execute(store),
-        Some(RequestData::Hmget(_)) => todo!(),
+        Some(RequestData::Hmget(v)) => v.execute(store),
         Some(RequestData::Hset(v)) => v.execute(store),
-        Some(RequestData::Hmset(_)) => todo!(),
-        Some(RequestData::Hdel(_)) => todo!(),
-        Some(RequestData::Hmdel(_)) => todo!(),
-        Some(RequestData::Hexist(_)) => todo!(),
-        Some(RequestData::Hmexist(_)) => todo!(),
+        Some(RequestData::Hmset(v)) => v.execute(store),
+        Some(RequestData::Hdel(v)) => v.execute(store),
+        Some(RequestData::Hmdel(v)) => v.execute(store),
+        Some(RequestData::Hexist(v)) =>  v.execute(store),
+        Some(RequestData::Hmexist(v)) => v.execute(store),
         None => KvError::InvalidCommand("invalid command".into()).into(),
     }
 }
@@ -83,7 +83,7 @@ mod tests {
 }
 
 #[cfg(test)]
-fn assert_response_ok(mut response: CommandResponse, values: &[Value], pairs: &[KvPair]) {
+pub fn assert_response_ok(mut response: CommandResponse, values: &[Value], pairs: &[KvPair]) {
     response.pairs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     assert_eq!(response.status, 200);
     assert_eq!(response.message, "");
@@ -92,7 +92,7 @@ fn assert_response_ok(mut response: CommandResponse, values: &[Value], pairs: &[
 }
 
 #[cfg(test)]
-fn assert_response_error(response: CommandResponse, code: u32, message: &str) {
+pub fn assert_response_error(response: CommandResponse, code: u32, message: &str) {
     assert_eq!(response.status, code);
     assert!(response.message.contains(message));
     assert_eq!(response.values, &[]);
