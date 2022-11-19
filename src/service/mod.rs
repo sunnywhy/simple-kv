@@ -13,7 +13,7 @@ pub struct Service<Store = MemTable> {
     inner: Arc<ServiceInner<Store>>
 }
 
-struct ServiceInner<Store> {
+pub struct ServiceInner<Store> {
     store: Store
 }
 
