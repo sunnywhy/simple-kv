@@ -173,3 +173,9 @@ impl From<bool> for Value {
         }
     }
 }
+
+impl From<(String, Value)> for KvPair {
+    fn from((key, value): (String, Value)) -> Self {
+        KvPair::new(key, value)
+    }
+}
