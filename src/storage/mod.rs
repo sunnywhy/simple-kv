@@ -2,6 +2,8 @@ use crate::error::KvError;
 use crate::{KvPair, Value};
 
 mod memory;
+mod sleddb;
+
 pub use memory::MemTable;
 
 // we don't care where the data is saved, we need to define how the storage will be used
@@ -49,6 +51,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+    use crate::storage::sleddb::SledDb;
     use super::*;
 
     #[test]
@@ -66,6 +70,27 @@ mod tests {
     #[test]
     fn memtable_iter_should_work() {
         let store = MemTable::new();
+        test_get_iter(store);
+    }
+
+    #[test]
+    fn sleddb_basic_interface_should_work() {
+        let dir = tempdir().unwrap();
+        let store = SledDb::new(dir);
+        test_basic_interface(store);
+    }
+
+    #[test]
+    fn sleddb_get_all_should_work() {
+        let dir = tempdir().unwrap();
+        let store = SledDb::new(dir);
+        test_get_all(store);
+    }
+
+    #[test]
+    fn sleddb_iter_should_work() {
+        let dir = tempdir().unwrap();
+        let store = SledDb::new(dir);
         test_get_iter(store);
     }
 
