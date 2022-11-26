@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tracing::debug;
 use crate::{CommandRequest, CommandResponse, KvError, KvPair, MemTable, Storage, Value};
 use crate::command_request::RequestData;
 
@@ -20,7 +21,7 @@ pub struct ServiceInner<Store> {
     on_after_send: Vec<fn()>,
 }
 
-impl Clone for Service {
+impl<Store> Clone for Service<Store> {
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner)
@@ -60,6 +61,9 @@ impl <Store: Storage> Service<Store> {
         let mut response = dispatch(request, &self.inner.store);
         self.inner.on_executed.notify(&response);
         self.inner.on_before_send.notify(&mut response);
+        if !self.inner.on_after_send.is_empty() {
+           debug!("Modified response: {:?}", response);
+        }
 
         response
     }

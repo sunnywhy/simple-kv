@@ -5,6 +5,7 @@ mod memory;
 mod sleddb;
 
 pub use memory::MemTable;
+pub use sleddb::SledDb;
 
 // we don't care where the data is saved, we need to define how the storage will be used
 pub trait Storage {
