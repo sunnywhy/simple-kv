@@ -7,6 +7,9 @@ pub enum KvError {
     #[error("Not found for table {0} and key {1}")]
     NotFound(String, String),
 
+    #[error("Frame is larger than max frame size")]
+    FrameError,
+
     #[error("Cannot parse command: `{0}`")]
     InvalidCommand(String),
     #[error("Cannot convert value {:0} to {1}")]
