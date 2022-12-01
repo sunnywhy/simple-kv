@@ -4,6 +4,7 @@ use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use prost::Message;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tracing::debug;
 use crate::{CommandRequest, CommandResponse, KvError};
 
@@ -35,8 +36,8 @@ where
         buf.put_u32(size as u32);
 
         if size > COMPRESSION_THRESHOLD {
-            let mut compressedBuf = Vec::with_capacity(size);
-            self.encode(&mut compressedBuf)?;
+            let mut compressed_buf = Vec::with_capacity(size);
+            self.encode(&mut compressed_buf)?;
 
             // BytesMut support logic split
             // so we remove the 4 bytes length first
@@ -45,7 +46,7 @@ where
 
             // handle gzip
             let mut encoder = GzEncoder::new(payload.writer(), Compression::default());
-            encoder.write_all(&compressedBuf)?;
+            encoder.write_all(&compressed_buf)?;
 
             // after compression, get the BytesMut from the gzip encoder
             let payload = encoder.finish()?.into_inner();
@@ -72,12 +73,12 @@ where
         if compressed {
             // unzip
             let mut decoder = GzDecoder::new(&buf[..len]);
-            let mut decompressedBuf = Vec::with_capacity(len * 2);
-            decoder.read_to_end(&mut decompressedBuf)?;
+            let mut decompressed_buf = Vec::with_capacity(len * 2);
+            decoder.read_to_end(&mut decompressed_buf)?;
             buf.advance(len);
 
             // decode
-            Ok(Self::decode(&decompressedBuf.as_slice())?)
+            Ok(Self::decode(&decompressed_buf[..])?)
         } else {
             // decode
             let message = Self::decode(&buf[..len])?;
@@ -95,4 +96,117 @@ fn decode_header(header: usize) -> (usize, bool) {
     let len = header & !COMPRESSION_BIT;
     let compressed = header & COMPRESSION_BIT == COMPRESSION_BIT;
     (len, compressed)
+}
+
+// read a frame from a stream
+pub async fn read_frame<S>(stream: &mut S, buf: &mut BytesMut) -> Result<(), KvError>
+where
+    S: AsyncRead + Unpin + Send,
+{
+    // read 4 bytes length
+    let mut header = [0; LENGTH_BYTES];
+    stream.read_exact(&mut header).await?;
+    let header = u32::from_be_bytes(header) as usize;
+    let (len, _compressed) = decode_header(header);
+
+    buf.reserve(LENGTH_BYTES + len);
+    buf.put_u32(header as u32);
+    // unsafe is because from current position too position + len is not initialized
+    // but we have reserved enough space, and after reading from the stream, the space will be initialized
+    // so it is safe
+    unsafe {
+        buf.advance_mut(len);
+    }
+    stream.read_exact(&mut buf[LENGTH_BYTES..]).await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use crate::Value;
+    use super::*;
+
+    struct DummyStream {
+        buf: BytesMut,
+    }
+
+    impl AsyncRead for DummyStream {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            let len = buf.capacity();
+
+            let data = self.get_mut().buf.split_to(len);
+
+            buf.put_slice(&data);
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn read_frame_should_work() {
+        let mut buf = BytesMut::new();
+        let request = CommandRequest::new_hdel("table", "key");
+        request.encode_frame(&mut buf).unwrap();
+        let mut stream = DummyStream { buf };
+
+        let mut data = BytesMut::new();
+        read_frame(&mut stream, &mut data).await.unwrap();
+
+        let request2 = CommandRequest::decode_frame(&mut data).unwrap();
+        assert_eq!(request, request2);
+    }
+
+    #[test]
+    fn command_request_encode_decode_should_work() {
+        let mut buf = BytesMut::new();
+
+        let mut request = CommandRequest::new_hdel("table", "key");
+        request.encode_frame(&mut buf).unwrap();
+
+        assert_eq!(is_compressed(&buf), false);
+
+        let request2 = CommandRequest::decode_frame(&mut buf).unwrap();
+        assert_eq!(request, request2);
+    }
+
+    #[test]
+    fn command_response_encode_decode_should_work() {
+        let mut buf = BytesMut::new();
+
+        let values: Vec<Value> = vec![1.into(), "hello".into(), b"data".into()];
+        let response: CommandResponse = values.into();
+        response.encode_frame(&mut buf).unwrap();
+
+        assert_eq!(is_compressed(&buf), false);
+
+        let response2 = CommandResponse::decode_frame(&mut buf).unwrap();
+        assert_eq!(response, response2);
+    }
+
+    #[test]
+    fn command_response_compressed_encode_decode_should_work() {
+        let mut buf = BytesMut::new();
+
+        let value: Value = Bytes::from(vec![0u8; COMPRESSION_THRESHOLD + 1]).into();
+        let response: CommandResponse = value.into();
+        response.encode_frame(&mut buf).unwrap();
+
+        assert_eq!(is_compressed(&buf), true);
+
+        let response2 = CommandResponse::decode_frame(&mut buf).unwrap();
+        assert_eq!(response, response2);
+    }
+
+    fn is_compressed(buf: &BytesMut) -> bool {
+        if let &[v] = &buf[..1] {
+            v >> 7 == 1
+        } else {
+            false
+        }
+    }
 }

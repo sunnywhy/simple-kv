@@ -99,14 +99,14 @@ mod tests {
         let table = "test_table";
         let key = "test_key";
         let value = "test_value";
-        assert_eq!(store.get(table, key), Ok(None));
-        assert_eq!(store.set(table, key.to_string(), value.into()), Ok(None));
-        assert_eq!(store.get(table, key), Ok(Some(value.into())));
-        assert_eq!(store.contains(table, key), Ok(true));
-        assert_eq!(store.del(table, key), Ok(Some(value.into())));
-        assert_eq!(store.del(table, key), Ok(None));
-        assert_eq!(store.get(table, key), Ok(None));
-        assert_eq!(store.contains(table, key), Ok(false));
+        assert_eq!(None, store.get(table, key).unwrap());
+        assert_eq!(None, store.set(table, key.to_string(), value.into()).unwrap());
+        assert_eq!(store.get(table, key).unwrap(), Some(value.into()));
+        assert!(store.contains(table, key).unwrap());
+        assert_eq!(store.del(table, key).unwrap(), Some(value.into()));
+        assert_eq!(None, store.del(table, key).unwrap());
+        assert_eq!(None, store.get(table, key).unwrap());
+        assert!(!store.contains(table, key).unwrap());
     }
 
     fn test_get_all(store: impl Storage) {

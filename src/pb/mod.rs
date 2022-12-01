@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use http::StatusCode;
 use abi::command_request::RequestData;
 use abi::*;
@@ -171,6 +172,20 @@ impl From<bool> for Value {
     fn from(b: bool) -> Self {
         Self {
             value: Some(value::Value::Bool(b)),
+        }
+    }
+}
+
+impl<const N: usize> From<&[u8; N]> for Value {
+    fn from(bytes: &[u8; N]) -> Self {
+        Bytes::copy_from_slice(&bytes[..]).into()
+    }
+}
+
+impl From<Bytes> for Value {
+    fn from(bytes: Bytes) -> Self {
+        Self {
+            value: Some(value::Value::Binary(bytes)),
         }
     }
 }
