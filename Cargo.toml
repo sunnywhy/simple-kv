@@ -5,23 +5,30 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "kvs"
+path = "src/server.rs"
+
+[[bin]]
+name = "kvc"
+path = "src/client.rs"
+
 [dependencies]
+anyhow = "1"
 bytes = "1"
-prost = "0.9"
-tracing = "0.1"
-thiserror = "1"
 dashmap = "5"
-http = "0.2"
-sled = "0.34"
-tokio = { version = "1", features = ["full"] }
 flate2 = "1" # gzip
+http = "0.2"
+prost = "0.9"
+sled = "0.34"
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [dev-dependencies]
-anyhow = "1"
 async-prost = "0.3"
 futures = "0.3"
-
-tracing-subscriber = "0.3"
 tempfile = "3"
 tokio-util = { version = "0.7", features = ["codec"] }
 
