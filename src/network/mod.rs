@@ -81,3 +81,75 @@ where
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+    use bytes::Bytes;
+    use tokio::net::{TcpListener, TcpStream};
+    use crate::{assert_response_ok, MemTable, ServiceInner, Value};
+    use super::*;
+
+    #[tokio::test]
+    async fn client_server_basic_communication_should_work() -> anyhow::Result<()> {
+        let addr = start_server().await?;
+
+        let stream = TcpStream::connect(addr).await?;
+        let mut client = ProstClientStream::new(stream);
+
+        // send HSET, wait for response
+        let request = CommandRequest::new_hset("table", "key", "value".into());
+        let response = client.execute(request).await?;
+
+        // first time, response should be default value
+        assert_response_ok(response, &[Value::default()], &[]);
+
+        // another HSET
+        let request = CommandRequest::new_hset("table", "key", "value2".into());
+        let response = client.execute(request).await?;
+
+        // second time, response should be the first value
+        assert_response_ok(response, &["value".into()], &[]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn client_server_compression_should_work() -> anyhow::Result<()> {
+        let addr = start_server().await?;
+
+        let stream = TcpStream::connect(addr).await?;
+        let mut client = ProstClientStream::new(stream);
+
+        let v: Value = Bytes::from(vec![0u8;16384]).into();
+        let request = CommandRequest::new_hset("table", "key", v.clone().into());
+        let response = client.execute(request).await?;
+
+        assert_response_ok(response, &[Value::default()], &[]);
+
+        let request = CommandRequest::new_hget("table", "key");
+        let response = client.execute(request).await?;
+
+        // second time, response should be the first value
+        assert_response_ok(response, &[v.into()], &[]);
+
+        Ok(())
+    }
+
+    async fn start_server() -> anyhow::Result<SocketAddr> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+
+        tokio::spawn(async move {
+            let service: Service = ServiceInner::new(MemTable::new()).into();
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let service = service.clone();
+                let server = ProstServerStream::new(stream, service);
+                tokio::spawn(server.process());
+            }
+
+        });
+
+        Ok(addr)
+    }
+}
