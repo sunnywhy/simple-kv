@@ -133,3 +133,78 @@ fn load_key(key: &str) -> Result<PrivateKey, KvError> {
 
     Err(KvError::CertificateParseError("private", "key"))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+    use super::*;
+
+    use anyhow::Result;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    const CA_CERT: &str = include_str!("../../fixtures/ca.cert");
+    const SERVER_CERT: &str = include_str!("../../fixtures/server.cert");
+    const SERVER_KEY: &str = include_str!("../../fixtures/server.key");
+    const CLIENT_CERT: &str = include_str!("../../fixtures/client.cert");
+    const CLIENT_KEY: &str = include_str!("../../fixtures/client.key");
+
+    #[tokio::test]
+    async fn tls_should_work() {
+        let ca = Some(CA_CERT);
+        let addr = start_server(None).await.unwrap();
+
+        let connector = TlsClientConnector::new("kvserver.acme.inc", None, ca).unwrap();
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut stream = connector.connect(stream).await.unwrap();
+        stream.write_all(b"hello world!").await.unwrap();
+        let mut buf = [0; 12];
+        stream.read_exact(&mut buf).await.unwrap();
+
+        assert_eq!(b"hello world!", &buf);
+    }
+
+    #[tokio::test]
+    async fn tls_with_client_cert_should_work() {
+        let ca = Some(CA_CERT);
+        let addr = start_server(None).await.unwrap();
+
+        let connector = TlsClientConnector::new("kvserver.acme.inc", Some((CLIENT_CERT, CLIENT_KEY)), ca).unwrap();
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut stream = connector.connect(stream).await.unwrap();
+        stream.write_all(b"hello world!").await.unwrap();
+        let mut buf = [0; 12];
+        stream.read_exact(&mut buf).await.unwrap();
+
+        assert_eq!(b"hello world!", &buf);
+    }
+
+    #[tokio::test]
+    async fn tls_with_bad_domain_should_fail() {
+        let ca = Some(CA_CERT);
+        let addr = start_server(None).await.unwrap();
+
+        let connector = TlsClientConnector::new("kvserver1.acme.inc", None, ca).unwrap();
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut result = connector.connect(stream).await;
+
+        assert!(result.is_err());
+    }
+
+
+    async fn start_server(ca: Option<&str>) -> Result<SocketAddr> {
+        let acceptor = TlsServerAcceptor::new(SERVER_CERT, SERVER_KEY, ca)?;
+        let echo = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = echo.local_addr()?;
+
+        tokio::spawn(async move {
+            let (stream, _) = echo.accept().await.unwrap();
+            let mut stream = acceptor.accept(stream).await.unwrap();
+            let mut buf = [0; 12];
+            stream.read_exact(&mut buf).await.unwrap();
+            stream.write_all(&buf).await.unwrap();
+        });
+
+        Ok(addr)
+    }
+}

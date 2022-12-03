@@ -107,7 +107,6 @@ impl CommandService for Hmexist {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command_request::RequestData;
 
     #[test]
     fn hset_should_work() {
@@ -198,7 +197,7 @@ mod tests {
         let request = CommandRequest::new_hmget("score", vec!["math".into(), "chinese".into()]);
         let response = dispatch(request, &store);
 
-        let values = vec![40.into(), 30.into()];
+        let values: Vec<Value> = vec![40.into(), 30.into()];
         assert_response_ok(response, &values, &[]);
     }
 
@@ -239,7 +238,7 @@ mod tests {
         let request = CommandRequest::new_hmdel("score", vec!["math".into(), "chinese".into()]);
         let response = dispatch(request, &store);
 
-        let values = vec![40.into(), 30.into()];
+        let values: Vec<Value> = vec![40.into(), 30.into()];
         assert_response_ok(response, &values, &[]);
 
         let request = CommandRequest::new_hget_all("score");
@@ -281,7 +280,7 @@ mod tests {
         let request = CommandRequest::new_hmexist("score", vec!["math".into(), "art".into(), "chinese".into()]);
         let response = dispatch(request, &store);
 
-        let values = vec![true.into(), false.into(), true.into()];
+        let values:Vec<Value> = vec![true.into(), false.into(), true.into()];
         assert_response_ok(response, &values, &[]);
     }
 }
