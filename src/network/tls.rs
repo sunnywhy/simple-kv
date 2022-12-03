@@ -88,7 +88,7 @@ impl TlsServerAcceptor {
 
         config.set_single_cert(certs, key)
             .map_err(|_| KvError::CertificateParseError("server", "cert"))?;
-        config.set_protocols(&[Vec::from(&ALPN_KV[..])]);
+        config.set_protocols(&[Vec::from(ALPN_KV)]);
 
         Ok(Self {
             inner: Arc::new(config),
@@ -186,7 +186,7 @@ mod tests {
 
         let connector = TlsClientConnector::new("kvserver1.acme.inc", None, ca).unwrap();
         let stream = TcpStream::connect(addr).await.unwrap();
-        let mut result = connector.connect(stream).await;
+        let result = connector.connect(stream).await;
 
         assert!(result.is_err());
     }

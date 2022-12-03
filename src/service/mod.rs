@@ -128,7 +128,6 @@ mod tests {
     use std::thread;
     use http::StatusCode;
     use tracing::info;
-    use crate::{MemTable, Value};
     use super::*;
 
     #[test]

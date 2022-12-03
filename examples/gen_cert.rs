@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 
 fn create_ca() -> Result<CertPem> {
     let (cert, key) = generate_ca(
-        &["acme.inc"],
+        ["acme.inc"],
         "Canada",
         "Acme Inc",
         "Acme CA",

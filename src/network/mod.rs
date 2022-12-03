@@ -5,7 +5,9 @@ use bytes::BytesMut;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tracing::info;
 pub use frame::FrameCoder;
+pub use tls::{TlsClientConnector, TlsServerAcceptor};
 use crate::{CommandRequest, CommandResponse, KvError, Service};
+
 
 // handle the read/write of a socket accepted by the server
 pub struct ProstServerStream<S> {
@@ -62,7 +64,7 @@ where
 
     pub async fn execute(&mut self, request: CommandRequest) -> Result<CommandResponse, KvError> {
         self.send(request).await?;
-        Ok(self.recv().await?)
+        self.recv().await
     }
 
     pub async fn send(&mut self, request: CommandRequest) -> Result<(), KvError> {

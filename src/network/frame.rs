@@ -165,7 +165,7 @@ mod tests {
     fn command_request_encode_decode_should_work() {
         let mut buf = BytesMut::new();
 
-        let mut request = CommandRequest::new_hdel("table", "key");
+        let request = CommandRequest::new_hdel("table", "key");
         request.encode_frame(&mut buf).unwrap();
 
         assert_eq!(is_compressed(&buf), false);
