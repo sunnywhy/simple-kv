@@ -61,7 +61,7 @@ impl<S, In, Out> Sink<Out> for ProstStream<S, In, Out>
     // if send() failed, return KvError
     type Error = KvError;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 

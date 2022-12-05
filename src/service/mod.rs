@@ -1,6 +1,10 @@
 use std::sync::Arc;
+
 use tracing::debug;
-use crate::{CommandRequest, CommandResponse, KvError, KvPair, MemTable, Storage, Value};
+
+use crate::{CommandRequest, CommandResponse, KvError, MemTable, Storage};
+#[cfg(test)]
+use crate::{KvPair, Value};
 use crate::command_request::RequestData;
 
 mod command_service;
@@ -10,7 +14,7 @@ pub trait CommandService {
 }
 
 pub struct Service<Store = MemTable> {
-    inner: Arc<ServiceInner<Store>>
+    inner: Arc<ServiceInner<Store>>,
 }
 
 pub struct ServiceInner<Store> {
@@ -55,14 +59,14 @@ impl<Args> NotifyMut<Args> for Vec<fn(&mut Args)> {
     }
 }
 
-impl <Store: Storage> Service<Store> {
+impl<Store: Storage> Service<Store> {
     pub fn execute(&self, request: CommandRequest) -> CommandResponse {
         self.inner.on_received.notify(&request);
         let mut response = dispatch(request, &self.inner.store);
         self.inner.on_executed.notify(&response);
         self.inner.on_before_send.notify(&mut response);
         if !self.inner.on_after_send.is_empty() {
-           debug!("Modified response: {:?}", response);
+            debug!("Modified response: {:?}", response);
         }
 
         response
@@ -117,7 +121,7 @@ pub fn dispatch(request: CommandRequest, store: &impl Storage) -> CommandRespons
         Some(RequestData::Hmset(v)) => v.execute(store),
         Some(RequestData::Hdel(v)) => v.execute(store),
         Some(RequestData::Hmdel(v)) => v.execute(store),
-        Some(RequestData::Hexist(v)) =>  v.execute(store),
+        Some(RequestData::Hexist(v)) => v.execute(store),
         Some(RequestData::Hmexist(v)) => v.execute(store),
         None => KvError::InvalidCommand("invalid command".into()).into(),
     }
@@ -126,8 +130,10 @@ pub fn dispatch(request: CommandRequest, store: &impl Storage) -> CommandRespons
 #[cfg(test)]
 mod tests {
     use std::thread;
+
     use http::StatusCode;
     use tracing::info;
+
     use super::*;
 
     #[test]
