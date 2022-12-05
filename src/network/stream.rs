@@ -1,9 +1,11 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
 use bytes::BytesMut;
-use futures::{ready, Sink, Stream};
+use futures::{FutureExt, ready, Sink, Stream};
 use tokio::io::{AsyncRead, AsyncWrite};
+
 use crate::{FrameCoder, KvError};
 use crate::network::frame::read_frame;
 
@@ -23,15 +25,15 @@ pub struct ProstStream<S, In, Out> {
 }
 
 impl<S, In, Out> Stream for ProstStream<S, In, Out>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
-    In: FrameCoder + Unpin + Send,
-    Out: Unpin + Send,
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+        In: FrameCoder + Unpin + Send,
+        Out: Unpin + Send,
 {
     // when calling next(), return Result<In, KvError>
     type Item = Result<In, KvError>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // after last time calling poll_next(), the read_buf should be empty
         assert!(self.read_buf.is_empty());
 
@@ -40,7 +42,7 @@ where
 
         // read a frame from the stream
         let fut = read_frame(&mut self.stream, &mut rest);
-        ready!(fut.poll_unpin(cx))?;
+        ready!(Box::pin(fut).poll_unpin(cx))?;
 
         // get data, merge the buffer
         self.read_buf.unsplit(rest);
@@ -51,10 +53,10 @@ where
 
 // when calling send(), will send Out to the stream
 impl<S, In, Out> Sink<Out> for ProstStream<S, In, Out>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
-    In: Unpin + Send,
-    Out: FrameCoder + Unpin + Send,
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+        In: Unpin + Send,
+        Out: FrameCoder + Unpin + Send,
 {
     // if send() failed, return KvError
     type Error = KvError;
@@ -85,18 +87,17 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        let this = self.get_mut();
-        ready!(this.poll_flush(cx))?;
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        ready!(self.as_mut().poll_flush(cx))?;
 
-        ready!(Pin::new(&mut this.stream).poll_shutdown(cx))?;
+        ready!(Pin::new(&mut self.stream).poll_shutdown(cx))?;
         Poll::Ready(Ok(()))
     }
 }
 
 impl<S, In, Out> ProstStream<S, In, Out>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
 {
     pub fn new(stream: S) -> Self {
         Self {
@@ -112,3 +113,32 @@ where
 
 // in general, our ProstStream is Unpin
 impl<S, In, Out> Unpin for ProstStream<S, In, Out> where S: Unpin {}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use futures::{SinkExt, StreamExt};
+
+    use crate::CommandRequest;
+    use crate::utils::DummyStream;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn prost_stream_should_work() -> Result<()> {
+        let buf = BytesMut::new();
+        let stream = DummyStream { buf };
+        let mut stream = ProstStream::<_, CommandRequest, CommandRequest>::new(stream);
+
+        let request = CommandRequest::new_hdel("table", "key");
+        stream.send(request.clone()).await?;
+
+        if let Some(Ok(s)) = stream.next().await {
+            assert_eq!(s, request);
+        } else {
+            assert!(false);
+        }
+
+        Ok(())
+    }
+}

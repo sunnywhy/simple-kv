@@ -1,14 +1,15 @@
-mod frame;
-mod tls;
-mod stream;
-
 use bytes::BytesMut;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tracing::info;
+
 pub use frame::FrameCoder;
 pub use tls::{TlsClientConnector, TlsServerAcceptor};
+
 use crate::{CommandRequest, CommandResponse, KvError, Service};
 
+mod frame;
+mod stream;
+mod tls;
 
 // handle the read/write of a socket accepted by the server
 pub struct ProstServerStream<S> {
@@ -22,8 +23,8 @@ pub struct ProstClientStream<S> {
 }
 
 impl<S> ProstServerStream<S>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
 {
     pub fn new(inner: S, service: Service) -> Self {
         Self { inner, service }
@@ -56,8 +57,8 @@ where
 }
 
 impl<S> ProstClientStream<S>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
 {
     pub fn new(inner: S) -> Self {
         Self { inner }
@@ -86,11 +87,66 @@ where
 }
 
 #[cfg(test)]
+pub mod utils {
+    use std::task::Poll;
+
+    use bytes::{BufMut, BytesMut};
+    use tokio::io::{AsyncRead, AsyncWrite};
+
+    pub struct DummyStream {
+        pub buf: BytesMut,
+    }
+
+    impl AsyncRead for DummyStream {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            let len = buf.capacity();
+
+            let data = self.get_mut().buf.split_to(len);
+
+            buf.put_slice(&data);
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncWrite for DummyStream {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            self.get_mut().buf.put_slice(buf);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
+
     use bytes::Bytes;
     use tokio::net::{TcpListener, TcpStream};
+
     use crate::{assert_response_ok, MemTable, ServiceInner, Value};
+
     use super::*;
 
     #[tokio::test]
@@ -124,7 +180,7 @@ mod tests {
         let stream = TcpStream::connect(addr).await?;
         let mut client = ProstClientStream::new(stream);
 
-        let v: Value = Bytes::from(vec![0u8;16384]).into();
+        let v: Value = Bytes::from(vec![0u8; 16384]).into();
         let request = CommandRequest::new_hset("table", "key", v.clone().into());
         let response = client.execute(request).await?;
 
@@ -151,7 +207,6 @@ mod tests {
                 let server = ProstServerStream::new(stream, service);
                 tokio::spawn(server.process());
             }
-
         });
 
         Ok(addr)

@@ -1,4 +1,5 @@
 use std::io::{Read, Write};
+
 use bytes::{Buf, BufMut, BytesMut};
 use flate2::Compression;
 use flate2::read::GzDecoder;
@@ -6,6 +7,7 @@ use flate2::write::GzEncoder;
 use prost::Message;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tracing::debug;
+
 use crate::{CommandRequest, CommandResponse, KvError};
 
 // the length took 4 bytes
@@ -22,8 +24,8 @@ const COMPRESSION_BIT: usize = 1 << 31;
 
 // handle Frame's encode and decode
 pub trait FrameCoder
-where
-    Self: Message + Sized + Default,
+    where
+        Self: Message + Sized + Default,
 {
     // convert a Message to a frame
     fn encode_frame(&self, buf: &mut BytesMut) -> Result<(), KvError> {
@@ -67,7 +69,7 @@ where
     fn decode_frame(buf: &mut BytesMut) -> Result<Self, KvError> {
         // get 4 bytes, read length and compression flag
         let header = buf.get_u32() as usize;
-        let(len, compressed) = decode_header(header);
+        let (len, compressed) = decode_header(header);
         debug!("Got a frame, length: {}, compressed: {}", len, compressed);
 
         if compressed {
@@ -86,10 +88,10 @@ where
             Ok(message)
         }
     }
-
 }
 
 impl FrameCoder for CommandRequest {}
+
 impl FrameCoder for CommandResponse {}
 
 fn decode_header(header: usize) -> (usize, bool) {
@@ -100,8 +102,8 @@ fn decode_header(header: usize) -> (usize, bool) {
 
 // read a frame from a stream
 pub async fn read_frame<S>(stream: &mut S, buf: &mut BytesMut) -> Result<(), KvError>
-where
-    S: AsyncRead + Unpin + Send,
+    where
+        S: AsyncRead + Unpin + Send,
 {
     // read 4 bytes length
     let mut header = [0; LENGTH_BYTES];
@@ -125,27 +127,11 @@ where
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
+
+    use crate::utils::DummyStream;
     use crate::Value;
+
     use super::*;
-
-    struct DummyStream {
-        buf: BytesMut,
-    }
-
-    impl AsyncRead for DummyStream {
-        fn poll_read(
-            self: std::pin::Pin<&mut Self>,
-            _cx: &mut std::task::Context<'_>,
-            buf: &mut tokio::io::ReadBuf<'_>,
-        ) -> std::task::Poll<std::io::Result<()>> {
-            let len = buf.capacity();
-
-            let data = self.get_mut().buf.split_to(len);
-
-            buf.put_slice(&data);
-            std::task::Poll::Ready(Ok(()))
-        }
-    }
 
     #[tokio::test]
     async fn read_frame_should_work() {
