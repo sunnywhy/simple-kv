@@ -1,8 +1,10 @@
 use bytes::Bytes;
 use http::StatusCode;
-use abi::command_request::RequestData;
-use abi::*;
 use prost::Message;
+
+use abi::*;
+use abi::command_request::RequestData;
+
 use crate::KvError;
 
 pub mod abi;
@@ -92,7 +94,7 @@ impl CommandRequest {
 impl From<Value> for CommandResponse {
     fn from(value: Value) -> Self {
         Self {
-           status: StatusCode::OK.as_u16() as u32,
+            status: StatusCode::OK.as_u16() as u32,
             values: vec![value],
             ..Default::default()
         }
@@ -122,7 +124,7 @@ impl From<Vec<Value>> for CommandResponse {
 impl From<KvError> for CommandResponse {
     fn from(error: KvError) -> Self {
         let status_code = match error {
-            KvError::NotFound(_,_) => StatusCode::NOT_FOUND.as_u16(),
+            KvError::NotFound(_, _) => StatusCode::NOT_FOUND.as_u16(),
             KvError::InvalidCommand(_) => StatusCode::BAD_REQUEST.as_u16(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
         };
@@ -132,6 +134,14 @@ impl From<KvError> for CommandResponse {
             message: error.to_string(),
             ..Default::default()
         }
+    }
+}
+
+impl CommandResponse {
+    pub fn ok() -> Self {
+        let mut result = CommandResponse::default();
+        result.status = StatusCode::OK.as_u16() as _;
+        result
     }
 }
 
