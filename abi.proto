@@ -14,6 +14,9 @@ message CommandRequest {
     Hmdel hmdel = 7;
     Hexist hexist = 8;
     Hmexist hmexist = 9;
+    Subscribe subscribe = 10;
+    Unsubscribe unsubscribe = 11;
+    Publish publish = 12;
   }
 }
 
@@ -90,6 +93,24 @@ message Value {
     double float = 4;
     bool bool = 5;
   }
+}
+
+// subscribe to a topic
+// if succeed, the first returned CommandResponse will include a global unique subscription id
+message Subscribe {
+  string topic = 1;
+}
+
+// unsubscribe a topic
+message Unsubscribe {
+  string topic = 1;
+  uint32 id = 2;
+}
+
+// publish data to a topic
+message Publish {
+  string topic = 1;
+  repeated Value data = 2;
 }
 
 // key-value pair
