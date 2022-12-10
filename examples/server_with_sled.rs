@@ -4,7 +4,7 @@ use futures::prelude::*;
 use tokio::net::TcpListener;
 use tracing::info;
 
-use kv::{CommandRequest, CommandResponse, Service, SledDb, ServiceInner};
+use kv::{CommandRequest, CommandResponse, Service, ServiceInner, SledDb};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,9 +31,11 @@ async fn main() -> Result<()> {
                 AsyncProstStream::<_, CommandRequest, CommandResponse, _>::from(stream).for_async();
             while let Some(Ok(cmd)) = stream.next().await {
                 info!("Received command: {:?}", cmd);
-                let resp = service_cloned.execute(cmd);
+                let mut resp = service_cloned.execute(cmd);
 
-                stream.send(resp).await.unwrap();
+                while let Some(data) = resp.next().await {
+                    stream.send((*data).clone()).await.unwrap();
+                }
             }
             info!("Connection closed {}", addr);
         });

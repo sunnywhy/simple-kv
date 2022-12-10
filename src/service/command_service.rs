@@ -113,10 +113,10 @@ mod tests {
         let store = MemTable::new();
         let request = CommandRequest::new_hset("t1", "hello", "world".into());
         let response = dispatch(request.clone(), &store);
-        assert_response_ok(response, &[Value::default()], &[]);
+        assert_response_ok(&response, &[Value::default()], &[]);
 
         let response = dispatch(request, &store);
-        assert_response_ok(response, &["world".into()], &[]);
+        assert_response_ok(&response, &["world".into()], &[]);
     }
 
     #[test]
@@ -124,11 +124,11 @@ mod tests {
         let store = MemTable::new();
         let request = CommandRequest::new_hset("score", "math", 10.into());
         let response = dispatch(request, &store);
-        assert_response_ok(response, &[Value::default()], &[]);
+        assert_response_ok(&response, &[Value::default()], &[]);
 
         let request = CommandRequest::new_hget("score", "math");
         let response = dispatch(request, &store);
-        assert_response_ok(response, &[10.into()], &[]);
+        assert_response_ok(&response, &[10.into()], &[]);
     }
 
     #[test]
@@ -136,7 +136,7 @@ mod tests {
         let store = MemTable::new();
         let request = CommandRequest::new_hget("score", "math");
         let response = dispatch(request, &store);
-        assert_response_error(response, 404, "Not found");
+        assert_response_error(&response, 404, "Not found");
     }
 
     #[test]
@@ -161,7 +161,7 @@ mod tests {
             KvPair::new("english", 20.into()),
             KvPair::new("math", 40.into()),
         ];
-        assert_response_ok(response, &[], &pairs);
+        assert_response_ok(&response, &[], &pairs);
     }
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
         let response = dispatch(request, &store);
 
         let values = vec![Value::default(), Value::default(), Value::default(), 10.into()];
-        assert_response_ok(response, &values, &[]);
+        assert_response_ok(&response, &values, &[]);
     }
 
     #[test]
@@ -198,7 +198,7 @@ mod tests {
         let response = dispatch(request, &store);
 
         let values: Vec<Value> = vec![40.into(), 30.into()];
-        assert_response_ok(response, &values, &[]);
+        assert_response_ok(&response, &values, &[]);
     }
 
     #[test]
@@ -210,15 +210,15 @@ mod tests {
 
         let request = CommandRequest::new_hdel("score", "math");
         let response = dispatch(request, &store);
-        assert_response_ok(response, &[40.into()], &[]);
+        assert_response_ok(&response, &[40.into()], &[]);
 
         let request = CommandRequest::new_hget("score", "math");
         let response = dispatch(request, &store);
-        assert_response_error(response, 404, "Not found");
+        assert_response_error(&response, 404, "Not found");
 
         let request = CommandRequest::new_hdel("score", "math");
         let response = dispatch(request, &store);
-        assert_response_ok(response, &[Value::default()], &[]);
+        assert_response_ok(&response, &[Value::default()], &[]);
     }
 
     #[test]
@@ -239,13 +239,13 @@ mod tests {
         let response = dispatch(request, &store);
 
         let values: Vec<Value> = vec![40.into(), 30.into()];
-        assert_response_ok(response, &values, &[]);
+        assert_response_ok(&response, &values, &[]);
 
         let request = CommandRequest::new_hget_all("score");
         let response = dispatch(request, &store);
 
         let pairs = vec![KvPair::new("english", 20.into())];
-        assert_response_ok(response, &[], &pairs);
+        assert_response_ok(&response, &[], &pairs);
     }
 
     #[test]
@@ -257,11 +257,11 @@ mod tests {
 
         let request = CommandRequest::new_hexist("score", "math");
         let response = dispatch(request, &store);
-        assert_response_ok(response, &[true.into()], &[]);
+        assert_response_ok(&response, &[true.into()], &[]);
 
         let request = CommandRequest::new_hexist("score", "english");
         let response = dispatch(request, &store);
-        assert_response_ok(response, &[false.into()], &[]);
+        assert_response_ok(&response, &[false.into()], &[]);
     }
 
     #[test]
@@ -280,7 +280,7 @@ mod tests {
         let request = CommandRequest::new_hmexist("score", vec!["math".into(), "art".into(), "chinese".into()]);
         let response = dispatch(request, &store);
 
-        let values:Vec<Value> = vec![true.into(), false.into(), true.into()];
-        assert_response_ok(response, &values, &[]);
+        let values: Vec<Value> = vec![true.into(), false.into(), true.into()];
+        assert_response_ok(&response, &values, &[]);
     }
 }

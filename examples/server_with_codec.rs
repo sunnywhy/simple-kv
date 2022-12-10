@@ -1,11 +1,12 @@
 use anyhow::Result;
+use bytes::BytesMut;
 use futures::prelude::*;
 use prost::Message;
 use tokio::net::TcpListener;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::info;
 
-use kv::{CommandRequest, Service, MemTable, ServiceInner};
+use kv::{CommandRequest, MemTable, Service, ServiceInner};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,10 +29,14 @@ async fn main() -> Result<()> {
             while let Some(Ok(mut buf)) = stream.next().await {
                 let cmd = CommandRequest::decode(&mut buf).unwrap();
                 info!("Received command: {:?}", cmd);
-                let resp = service_cloned.execute(cmd);
+                let mut resp = service_cloned.execute(cmd);
                 buf.clear();
-                resp.encode(&mut buf).unwrap();
-                stream.send(buf.freeze()).await.unwrap();
+
+                while let Some(data) = resp.next().await {
+                    let mut buf = BytesMut::new();
+                    data.encode(&mut buf).unwrap();
+                    stream.send(buf.freeze()).await.unwrap();
+                }
             }
             info!("Connection closed {:?}", addr);
         });

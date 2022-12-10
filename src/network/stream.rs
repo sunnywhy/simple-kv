@@ -52,7 +52,7 @@ impl<S, In, Out> Stream for ProstStream<S, In, Out>
 }
 
 // when calling send(), will send Out to the stream
-impl<S, In, Out> Sink<Out> for ProstStream<S, In, Out>
+impl<S, In, Out> Sink<&Out> for ProstStream<S, In, Out>
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
         In: Unpin + Send,
@@ -65,7 +65,7 @@ impl<S, In, Out> Sink<Out> for ProstStream<S, In, Out>
         Poll::Ready(Ok(()))
     }
 
-    fn start_send(self: Pin<&mut Self>, item: Out) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: &Out) -> Result<(), Self::Error> {
         let this = self.get_mut();
         item.encode_frame(&mut this.write_buf)?;
         Ok(())
@@ -131,7 +131,7 @@ mod tests {
         let mut stream = ProstStream::<_, CommandRequest, CommandRequest>::new(stream);
 
         let request = CommandRequest::new_hdel("table", "key");
-        stream.send(request.clone()).await?;
+        stream.send(&request).await?;
 
         if let Some(Ok(s)) = stream.next().await {
             assert_eq!(s, request);

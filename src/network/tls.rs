@@ -1,10 +1,12 @@
 use std::io::Cursor;
 use std::sync::Arc;
+
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::{client, server, TlsAcceptor, TlsConnector};
 use tokio_rustls::rustls::{AllowAnyAuthenticatedClient, Certificate, ClientConfig, NoClientAuth, PrivateKey, RootCertStore, ServerConfig};
 use tokio_rustls::rustls::internal::pemfile;
-use tokio_rustls::webpki::{DNSNameRef};
+use tokio_rustls::webpki::DNSNameRef;
+
 use crate::KvError;
 
 // KV server's own ALPN (Application Layer Protocol Negotiation)
@@ -20,7 +22,7 @@ pub struct TlsServerAcceptor {
 #[derive(Clone)]
 pub struct TlsClientConnector {
     pub config: Arc<ClientConfig>,
-    pub domain: Arc<String>
+    pub domain: Arc<String>,
 }
 
 impl TlsClientConnector {
@@ -55,8 +57,8 @@ impl TlsClientConnector {
 
     // trigger TLS protocol, convert lower level stream to TLS stream
     pub async fn connect<S>(&self, stream: S) -> Result<client::TlsStream<S>, KvError>
-    where
-        S: AsyncRead + AsyncWrite + Unpin + Send,
+        where
+            S: AsyncRead + AsyncWrite + Unpin + Send,
     {
         let dns = DNSNameRef::try_from_ascii_str(&self.domain)
             .map_err(|_| KvError::Internal("Invalid Dns name".into()))?;
@@ -97,8 +99,8 @@ impl TlsServerAcceptor {
 
     // trigger TLS protocol, convert lower level stream to TLS stream
     pub async fn accept<S>(&self, stream: S) -> Result<server::TlsStream<S>, KvError>
-    where
-        S: AsyncRead + AsyncWrite + Unpin + Send,
+        where
+            S: AsyncRead + AsyncWrite + Unpin + Send,
     {
         let stream = TlsAcceptor::from(self.inner.clone())
             .accept(stream)
@@ -135,67 +137,96 @@ fn load_key(key: &str) -> Result<PrivateKey, KvError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::net::SocketAddr;
-    use super::*;
-
-    use anyhow::Result;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpListener, TcpStream};
+pub mod tls_utils {
+    use crate::{KvError, TlsClientConnector, TlsServerAcceptor};
 
     const CA_CERT: &str = include_str!("../../fixtures/ca.cert");
-    const SERVER_CERT: &str = include_str!("../../fixtures/server.cert");
-    const SERVER_KEY: &str = include_str!("../../fixtures/server.key");
     const CLIENT_CERT: &str = include_str!("../../fixtures/client.cert");
     const CLIENT_KEY: &str = include_str!("../../fixtures/client.key");
+    const SERVER_CERT: &str = include_str!("../../fixtures/server.cert");
+    const SERVER_KEY: &str = include_str!("../../fixtures/server.key");
+
+    pub fn tls_connector(client_cert: bool) -> Result<TlsClientConnector, KvError> {
+        let ca = Some(CA_CERT);
+        let client_identity = Some((CLIENT_CERT, CLIENT_KEY));
+
+        match client_cert {
+            false => TlsClientConnector::new("kvserver.acme.inc", None, ca),
+            true => TlsClientConnector::new("kvserver.acme.inc", client_identity, ca),
+        }
+    }
+
+    pub fn tls_acceptor(client_cert: bool) -> Result<TlsServerAcceptor, KvError> {
+        let ca = Some(CA_CERT);
+        match client_cert {
+            true => TlsServerAcceptor::new(SERVER_CERT, SERVER_KEY, ca),
+            false => TlsServerAcceptor::new(SERVER_CERT, SERVER_KEY, None),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+
+    use anyhow::Result;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+    };
+
+    use crate::network::tls::tls_utils::tls_connector;
+
+    use super::tls_utils::tls_acceptor;
 
     #[tokio::test]
-    async fn tls_should_work() {
-        let ca = Some(CA_CERT);
-        let addr = start_server(None).await.unwrap();
-
-        let connector = TlsClientConnector::new("kvserver.acme.inc", None, ca).unwrap();
-        let stream = TcpStream::connect(addr).await.unwrap();
-        let mut stream = connector.connect(stream).await.unwrap();
-        stream.write_all(b"hello world!").await.unwrap();
+    async fn tls_should_work() -> Result<()> {
+        let addr = start_server(false).await?;
+        let connector = tls_connector(false)?;
+        let stream = TcpStream::connect(addr).await?;
+        let mut stream = connector.connect(stream).await?;
+        stream.write_all(b"hello world!").await?;
         let mut buf = [0; 12];
-        stream.read_exact(&mut buf).await.unwrap();
+        stream.read_exact(&mut buf).await?;
+        assert_eq!(&buf, b"hello world!");
 
-        assert_eq!(b"hello world!", &buf);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn tls_with_client_cert_should_work() {
-        let ca = Some(CA_CERT);
-        let addr = start_server(None).await.unwrap();
-
-        let connector = TlsClientConnector::new("kvserver.acme.inc", Some((CLIENT_CERT, CLIENT_KEY)), ca).unwrap();
-        let stream = TcpStream::connect(addr).await.unwrap();
-        let mut stream = connector.connect(stream).await.unwrap();
-        stream.write_all(b"hello world!").await.unwrap();
+    async fn tls_with_client_cert_should_work() -> Result<()> {
+        let addr = start_server(true).await?;
+        let connector = tls_connector(true)?;
+        let stream = TcpStream::connect(addr).await?;
+        let mut stream = connector.connect(stream).await?;
+        stream.write_all(b"hello world!").await?;
         let mut buf = [0; 12];
-        stream.read_exact(&mut buf).await.unwrap();
+        stream.read_exact(&mut buf).await?;
+        assert_eq!(&buf, b"hello world!");
 
-        assert_eq!(b"hello world!", &buf);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn tls_with_bad_domain_should_fail() {
-        let ca = Some(CA_CERT);
-        let addr = start_server(None).await.unwrap();
+    async fn tls_with_bad_domain_should_not_work() -> Result<()> {
+        let addr = start_server(false).await?;
 
-        let connector = TlsClientConnector::new("kvserver1.acme.inc", None, ca).unwrap();
-        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut connector = tls_connector(false)?;
+        connector.domain = Arc::new("kvserver1.acme.inc".into());
+        let stream = TcpStream::connect(addr).await?;
         let result = connector.connect(stream).await;
 
         assert!(result.is_err());
+
+        Ok(())
     }
 
+    async fn start_server(client_cert: bool) -> Result<SocketAddr> {
+        let acceptor = tls_acceptor(client_cert)?;
 
-    async fn start_server(ca: Option<&str>) -> Result<SocketAddr> {
-        let acceptor = TlsServerAcceptor::new(SERVER_CERT, SERVER_KEY, ca)?;
-        let echo = TcpListener::bind("127.0.0.1:0").await?;
-        let addr = echo.local_addr()?;
+        let echo = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = echo.local_addr().unwrap();
 
         tokio::spawn(async move {
             let (stream, _) = echo.accept().await.unwrap();

@@ -3,14 +3,18 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::info;
 
 pub use frame::FrameCoder;
+pub use multiplex::YamuxCtrl;
 pub use tls::{TlsClientConnector, TlsServerAcceptor};
 
 use crate::{CommandRequest, CommandResponse, KvError, Service};
 use crate::network::stream::ProstStream;
+use crate::network::stream_result::StreamResult;
 
 mod frame;
 mod stream;
 mod tls;
+mod multiplex;
+mod stream_result;
 
 // handle the read/write of a socket accepted by the server
 pub struct ProstServerStream<S> {
@@ -35,8 +39,10 @@ impl<S> ProstServerStream<S>
         let stream = &mut self.inner;
         while let Some(Ok(request)) = stream.next().await {
             info!("received request: {:?}", request);
-            let response = self.service.execute(request);
-            stream.send(response).await?;
+            let mut response = self.service.execute(request);
+            while let Some(data) = response.next().await {
+                stream.send(&data).await.unwrap();
+            }
         }
         Ok(())
     }
@@ -44,19 +50,28 @@ impl<S> ProstServerStream<S>
 
 impl<S> ProstClientStream<S>
     where
-        S: AsyncRead + AsyncWrite + Unpin + Send,
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     pub fn new(stream: S) -> Self {
         Self { inner: ProstStream::new(stream) }
     }
 
-    pub async fn execute(&mut self, request: CommandRequest) -> Result<CommandResponse, KvError> {
+    pub async fn execute_unary(&mut self, request: &CommandRequest) -> Result<CommandResponse, KvError> {
         let stream = &mut self.inner;
         stream.send(request).await?;
+
         match stream.next().await {
             Some(response) => response,
             None => Err(KvError::Internal("Did not receive response".into())),
         }
+    }
+
+    pub async fn execute_streaming(self, request: &CommandRequest) -> Result<StreamResult, KvError> {
+        let mut stream = self.inner;
+        stream.send(request).await?;
+        stream.close().await?;
+
+        StreamResult::new(stream).await
     }
 }
 
@@ -67,6 +82,7 @@ pub mod utils {
     use bytes::{BufMut, BytesMut};
     use tokio::io::{AsyncRead, AsyncWrite};
 
+    #[derive(Default)]
     pub struct DummyStream {
         pub buf: BytesMut,
     }
@@ -132,17 +148,17 @@ mod tests {
 
         // send HSET, wait for response
         let request = CommandRequest::new_hset("table", "key", "value".into());
-        let response = client.execute(request).await?;
+        let response = client.execute_unary(&request).await?;
 
         // first time, response should be default value
-        assert_response_ok(response, &[Value::default()], &[]);
+        assert_response_ok(&response, &[Value::default()], &[]);
 
         // another HSET
         let request = CommandRequest::new_hset("table", "key", "value2".into());
-        let response = client.execute(request).await?;
+        let response = client.execute_unary(&request).await?;
 
         // second time, response should be the first value
-        assert_response_ok(response, &["value".into()], &[]);
+        assert_response_ok(&response, &["value".into()], &[]);
 
         Ok(())
     }
@@ -156,15 +172,15 @@ mod tests {
 
         let v: Value = Bytes::from(vec![0u8; 16384]).into();
         let request = CommandRequest::new_hset("table", "key", v.clone().into());
-        let response = client.execute(request).await?;
+        let response = client.execute_unary(&request).await?;
 
-        assert_response_ok(response, &[Value::default()], &[]);
+        assert_response_ok(&response, &[Value::default()], &[]);
 
         let request = CommandRequest::new_hget("table", "key");
-        let response = client.execute(request).await?;
+        let response = client.execute_unary(&request).await?;
 
         // second time, response should be the first value
-        assert_response_ok(response, &[v.into()], &[]);
+        assert_response_ok(&response, &[v.into()], &[]);
 
         Ok(())
     }
